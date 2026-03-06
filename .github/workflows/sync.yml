@@ -45,7 +45,7 @@ jobs:
       - name: Checkout SPN CLI
         uses: actions/checkout@v4
         with:
-          repository: supernovae-st/spn-cli
+          repository: supernovae-st/supernovae-cli
           path: _repos/spn-cli
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
