@@ -1,0 +1,33 @@
+{
+  "name": "supernovae",
+  "version": "1.0.0",
+  "description": "Complete ecosystem plugin for SuperNovae AI tools: spn (package manager), nika (workflow engine), novanet (knowledge graph). Progressive disclosure from quickstart to deep architecture.",
+  "author": {
+    "name": "SuperNovae Studio, Nika & Thibaut Melen",
+    "email": "contact@supernovae.studio",
+    "url": "https://github.com/supernovae-st"
+  },
+  "homepage": "https://github.com/supernovae-st/claude-code-supernovae",
+  "repository": "https://github.com/supernovae-st/claude-code-supernovae",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "workflows",
+    "knowledge-graph",
+    "mcp",
+    "nika",
+    "novanet",
+    "spn",
+    "localization",
+    "content-generation",
+    "seo"
+  ],
+  "engines": {
+    "claude-code": ">=1.0.0"
+  },
+  "skills": "./skills/",
+  "agents": "./agents/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,226 @@
+# Auto-review plugin changes on pull requests
+# Validates plugin structure and content quality
+# NOTE: This workflow only reads repository files, no untrusted user input in run commands
+
+name: Review Plugin Changes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'skills/**'
+      - 'agents/**'
+      - 'commands/**'
+      - 'hooks/**'
+      - '.claude-plugin/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-structure:
+    name: Validate Plugin Structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check plugin.json
+        run: |
+          echo "## Plugin Manifest Validation" >> $GITHUB_STEP_SUMMARY
+
+          if [[ ! -f ".claude-plugin/plugin.json" ]]; then
+            echo "::error::.claude-plugin/plugin.json not found"
+            exit 1
+          fi
+
+          # Validate JSON syntax
+          if ! jq empty .claude-plugin/plugin.json 2>/dev/null; then
+            echo "::error::Invalid JSON in plugin.json"
+            exit 1
+          fi
+
+          echo "- [x] plugin.json exists and is valid JSON" >> $GITHUB_STEP_SUMMARY
+
+          # Check required fields
+          NAME=$(jq -r '.name' .claude-plugin/plugin.json)
+          VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
+
+          if [[ "$NAME" == "null" ]]; then
+            echo "::error::plugin.json missing 'name' field"
+            exit 1
+          fi
+
+          if [[ "$VERSION" == "null" ]]; then
+            echo "::error::plugin.json missing 'version' field"
+            exit 1
+          fi
+
+          echo "- [x] Required fields present (name: $NAME, version: $VERSION)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check skills directory
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Skills Validation" >> $GITHUB_STEP_SUMMARY
+
+          SKILL_COUNT=0
+          ERRORS=0
+
+          for skill_dir in skills/**/*/; do
+            if [[ -f "${skill_dir}SKILL.md" ]]; then
+              SKILL_COUNT=$((SKILL_COUNT + 1))
+
+              # Check frontmatter
+              if ! head -1 "${skill_dir}SKILL.md" | grep -q '^---'; then
+                echo "::warning::${skill_dir}SKILL.md missing frontmatter"
+                ERRORS=$((ERRORS + 1))
+              fi
+
+              # Check for name field in frontmatter
+              if ! grep -q '^name:' "${skill_dir}SKILL.md"; then
+                echo "::warning::${skill_dir}SKILL.md missing 'name' in frontmatter"
+                ERRORS=$((ERRORS + 1))
+              fi
+            fi
+          done
+
+          echo "- Found $SKILL_COUNT skills" >> $GITHUB_STEP_SUMMARY
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "- [!] $ERRORS skills have issues" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- [x] All skills have valid frontmatter" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check agents directory
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Agents Validation" >> $GITHUB_STEP_SUMMARY
+
+          AGENT_COUNT=0
+
+          for agent_file in agents/*.md; do
+            if [[ -f "$agent_file" ]]; then
+              AGENT_COUNT=$((AGENT_COUNT + 1))
+
+              # Check frontmatter
+              if ! head -1 "$agent_file" | grep -q '^---'; then
+                echo "::warning::$agent_file missing frontmatter"
+              fi
+            fi
+          done
+
+          echo "- Found $AGENT_COUNT agents" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check hooks file
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Hooks Validation" >> $GITHUB_STEP_SUMMARY
+
+          HOOKS_REF=$(jq -r '.hooks' .claude-plugin/plugin.json)
+
+          if [[ "$HOOKS_REF" != "null" ]] && [[ -n "$HOOKS_REF" ]]; then
+            if [[ -f "$HOOKS_REF" ]]; then
+              echo "- [x] hooks file exists at $HOOKS_REF" >> $GITHUB_STEP_SUMMARY
+
+              # Validate JSON
+              if ! jq empty "$HOOKS_REF" 2>/dev/null; then
+                echo "::error::Invalid JSON in $HOOKS_REF"
+                exit 1
+              fi
+              echo "- [x] hooks.json is valid JSON" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "::error::Hooks file referenced but not found: $HOOKS_REF"
+              exit 1
+            fi
+          else
+            echo "- No hooks configured" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  content-quality:
+    name: Content Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for broken links
+        run: |
+          echo "## Link Check" >> $GITHUB_STEP_SUMMARY
+
+          # Find markdown files and check for broken internal links
+          BROKEN_LINKS=0
+
+          for md_file in $(find . -name "*.md" -not -path "./_repos/*" -not -path "./node_modules/*"); do
+            # Extract relative links
+            LINKS=$(grep -oP '\]\((?!http)(?!#)[^)]+\)' "$md_file" | sed 's/\](\(.*\))/\1/' || true)
+
+            for link in $LINKS; do
+              # Resolve relative path
+              dir=$(dirname "$md_file")
+              resolved="$dir/$link"
+
+              if [[ ! -f "$resolved" ]] && [[ ! -d "$resolved" ]]; then
+                echo "::warning::Broken link in $md_file: $link"
+                BROKEN_LINKS=$((BROKEN_LINKS + 1))
+              fi
+            done
+          done
+
+          if [[ $BROKEN_LINKS -gt 0 ]]; then
+            echo "- [!] Found $BROKEN_LINKS potentially broken links" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- [x] No broken internal links detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check code blocks
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Code Block Check" >> $GITHUB_STEP_SUMMARY
+
+          # Check for unclosed code blocks
+          UNCLOSED=0
+
+          for md_file in $(find . -name "*.md" -not -path "./_repos/*"); do
+            OPEN=$(grep -c '```' "$md_file" || echo 0)
+
+            if [[ $((OPEN % 2)) -ne 0 ]]; then
+              echo "::warning::Unclosed code block in $md_file"
+              UNCLOSED=$((UNCLOSED + 1))
+            fi
+          done
+
+          if [[ $UNCLOSED -gt 0 ]]; then
+            echo "- [!] Found $UNCLOSED files with unclosed code blocks" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- [x] All code blocks are properly closed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [validate-structure, content-quality]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate summary
+        run: |
+          # Count resources
+          SKILLS=$(find skills -name "SKILL.md" | wc -l | tr -d ' ')
+          AGENTS=$(find agents -name "*.md" | wc -l | tr -d ' ')
+          COMMANDS=$(find commands -name "*.md" | wc -l | tr -d ' ')
+
+          echo "## Plugin Review Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Skills | $SKILLS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agents | $AGENTS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commands | $COMMANDS |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All validation checks passed." >> $GITHUB_STEP_SUMMARY

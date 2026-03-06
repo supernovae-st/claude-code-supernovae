@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'SuperNovae ecosystem plugin loaded'",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "pattern": "\\.nika\\.yaml$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v nika >/dev/null 2>&1 && nika check \"$(jq -r '.tool_input.file_path')\" 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

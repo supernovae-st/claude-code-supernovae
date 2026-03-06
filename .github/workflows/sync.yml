@@ -1,0 +1,169 @@
+# Sync plugin content from SuperNovae source repositories
+# Runs weekly and can be triggered manually
+
+name: Sync from Source Repos
+
+on:
+  schedule:
+    # Every Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no changes)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout plugin repo
+        uses: actions/checkout@v4
+
+      - name: Checkout NovaNet
+        uses: actions/checkout@v4
+        with:
+          repository: supernovae-st/novanet
+          path: _repos/novanet
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Checkout Nika
+        uses: actions/checkout@v4
+        with:
+          repository: supernovae-st/nika
+          path: _repos/nika
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Extract versions
+        id: versions
+        run: |
+          # NovaNet version from package.json
+          NOVANET_VERSION=$(jq -r '.version' _repos/novanet/package.json)
+          echo "novanet_version=$NOVANET_VERSION" >> $GITHUB_OUTPUT
+
+          # Nika version from Cargo.toml
+          NIKA_VERSION=$(grep -m1 '^version = ' _repos/nika/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "nika_version=$NIKA_VERSION" >> $GITHUB_OUTPUT
+
+          echo "NovaNet: $NOVANET_VERSION"
+          echo "Nika: $NIKA_VERSION"
+
+      - name: Check for version changes
+        id: changes
+        env:
+          NEW_NOVANET: ${{ steps.versions.outputs.novanet_version }}
+          NEW_NIKA: ${{ steps.versions.outputs.nika_version }}
+        run: |
+          # Compare with current README versions
+          CURRENT_NOVANET=$(grep -o 'novanet.*v[0-9.]*' README.md | grep -o 'v[0-9.]*' | head -1 || echo "v0.0.0")
+          CURRENT_NIKA=$(grep -o 'nika.*v[0-9.]*' README.md | grep -o 'v[0-9.]*' | head -1 || echo "v0.0.0")
+
+          echo "Current: NovaNet $CURRENT_NOVANET, Nika $CURRENT_NIKA"
+          echo "New: NovaNet v$NEW_NOVANET, Nika v$NEW_NIKA"
+
+          if [[ "v$NEW_NOVANET" != "$CURRENT_NOVANET" ]] || \
+             [[ "v$NEW_NIKA" != "$CURRENT_NIKA" ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update README versions
+        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
+          NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+        run: |
+          # Update version table in README.md (using env vars for safety)
+          sed -i "s/novanet.*v[0-9.]*/novanet | v$NOVANET_VER/" README.md
+          sed -i "s/nika.*v[0-9.]*/nika | v$NIKA_VER/" README.md
+
+      - name: Update MCP tool count
+        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          # Count MCP tools from NovaNet source
+          MCP_COUNT=$(grep -c 'novanet_' _repos/novanet/tools/novanet-mcp/src/tools/mod.rs 2>/dev/null || echo "14")
+          sed -i "s/[0-9]* MCP tools/$MCP_COUNT MCP tools/g" skills/01-core/novanet/SKILL.md
+
+      - name: Generate sync report
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
+          NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+        run: |
+          cat > .sync-report.md << EOF
+          # Sync Report
+
+          **Date**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          **Workflow**: ${{ github.run_id }}
+
+          ## Version Updates
+
+          | Tool | Current |
+          |------|---------|
+          | NovaNet | v$NOVANET_VER |
+          | Nika | v$NIKA_VER |
+
+          ## Changes
+
+          - Updated README.md version references
+          - Updated skill documentation
+          EOF
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
+        uses: peter-evans/create-pull-request@v6
+        env:
+          NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
+          NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: sync from source repos'
+          title: 'chore: sync from source repos'
+          body: |
+            ## Automated Sync
+
+            This PR updates plugin documentation from source repositories.
+
+            ### Version Updates
+            - **NovaNet**: See .sync-report.md
+            - **Nika**: See .sync-report.md
+
+            ### Files Changed
+            - README.md (version table)
+            - skills/01-core/novanet/SKILL.md
+            - .sync-report.md
+
+            ---
+            *Automated by [sync.yml](.github/workflows/sync.yml)*
+          branch: chore/sync-from-repos
+          delete-branch: true
+          labels: |
+            sync
+            automated
+
+      - name: Summary
+        env:
+          NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
+          NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+          HAS_CHANGES: ${{ steps.changes.outputs.has_changes }}
+        run: |
+          echo "## Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tool | Version |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| NovaNet | v$NOVANET_VER |" >> $GITHUB_STEP_SUMMARY
+          echo "| Nika | v$NIKA_VER |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "$HAS_CHANGES" == "true" ]]; then
+            echo "**Status**: Changes detected, PR created" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status**: No changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
