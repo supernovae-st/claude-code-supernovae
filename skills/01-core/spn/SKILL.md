@@ -1,6 +1,6 @@
 ---
 name: spn
-description: SuperNovae CLI reference - unified package manager for AI workflows. 50+ commands, 7 providers, 48 MCP aliases, OS Keychain security. Use when user asks about spn commands, provider config, MCP aliases, or package management.
+description: SuperNovae CLI reference - unified package manager for AI workflows. 50+40+ commands, 7 providers, 48 MCP aliases, OS Keychain security. Use when user asks about spn40+ commands, provider config, MCP aliases, or package management.
 argument-hint: "[command]"
 ---
 
