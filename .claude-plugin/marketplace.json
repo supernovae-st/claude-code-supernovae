@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-supernovae",
+  "owner": {
+    "name": "SuperNovae Studio"
+  },
+  "plugins": [
+    {
+      "name": "supernovae",
+      "source": "./",
+      "version": "1.0.0",
+      "description": "Complete ecosystem plugin for SuperNovae AI tools: spn (package manager), nika (workflow engine), novanet (knowledge graph)"
+    }
+  ]
+}
