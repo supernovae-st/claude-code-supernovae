@@ -56,8 +56,8 @@ jobs:
           NOVANET_VERSION=$(jq -r '.version' _repos/novanet/package.json)
           echo "novanet_version=$NOVANET_VERSION" >> $GITHUB_OUTPUT
 
-          # Nika version from Cargo.toml
-          NIKA_VERSION=$(grep -m1 '^version = ' _repos/nika/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          # Nika version from Cargo.toml (nested in tools/nika/)
+          NIKA_VERSION=$(grep -m1 '^version = ' _repos/nika/tools/nika/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "nika_version=$NIKA_VERSION" >> $GITHUB_OUTPUT
 
           # SPN version from Cargo.toml
