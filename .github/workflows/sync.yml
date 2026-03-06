@@ -1,5 +1,6 @@
 # Sync plugin content from SuperNovae source repositories
 # Runs weekly and can be triggered manually
+# Syncs from: novanet, nika, spn-cli
 
 name: Sync from Source Repos
 
@@ -41,6 +42,13 @@ jobs:
           path: _repos/nika
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
+      - name: Checkout SPN CLI
+        uses: actions/checkout@v4
+        with:
+          repository: supernovae-st/spn-cli
+          path: _repos/spn-cli
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
       - name: Extract versions
         id: versions
         run: |
@@ -52,24 +60,32 @@ jobs:
           NIKA_VERSION=$(grep -m1 '^version = ' _repos/nika/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "nika_version=$NIKA_VERSION" >> $GITHUB_OUTPUT
 
+          # SPN version from Cargo.toml
+          SPN_VERSION=$(grep -m1 '^version = ' _repos/spn-cli/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "spn_version=$SPN_VERSION" >> $GITHUB_OUTPUT
+
           echo "NovaNet: $NOVANET_VERSION"
           echo "Nika: $NIKA_VERSION"
+          echo "SPN: $SPN_VERSION"
 
       - name: Check for version changes
         id: changes
         env:
           NEW_NOVANET: ${{ steps.versions.outputs.novanet_version }}
           NEW_NIKA: ${{ steps.versions.outputs.nika_version }}
+          NEW_SPN: ${{ steps.versions.outputs.spn_version }}
         run: |
           # Compare with current README versions
-          CURRENT_NOVANET=$(grep -o 'novanet.*v[0-9.]*' README.md | grep -o 'v[0-9.]*' | head -1 || echo "v0.0.0")
-          CURRENT_NIKA=$(grep -o 'nika.*v[0-9.]*' README.md | grep -o 'v[0-9.]*' | head -1 || echo "v0.0.0")
+          CURRENT_NOVANET=$(grep -oP 'novanet.*v\K[0-9.]+' README.md | head -1 || echo "0.0.0")
+          CURRENT_NIKA=$(grep -oP 'nika.*v\K[0-9.]+' README.md | head -1 || echo "0.0.0")
+          CURRENT_SPN=$(grep -oP 'spn.*v\K[0-9.]+' README.md | head -1 || echo "0.0.0")
 
-          echo "Current: NovaNet $CURRENT_NOVANET, Nika $CURRENT_NIKA"
-          echo "New: NovaNet v$NEW_NOVANET, Nika v$NEW_NIKA"
+          echo "Current: NovaNet v$CURRENT_NOVANET, Nika v$CURRENT_NIKA, SPN v$CURRENT_SPN"
+          echo "New: NovaNet v$NEW_NOVANET, Nika v$NEW_NIKA, SPN v$NEW_SPN"
 
-          if [[ "v$NEW_NOVANET" != "$CURRENT_NOVANET" ]] || \
-             [[ "v$NEW_NIKA" != "$CURRENT_NIKA" ]]; then
+          if [[ "$NEW_NOVANET" != "$CURRENT_NOVANET" ]] || \
+             [[ "$NEW_NIKA" != "$CURRENT_NIKA" ]] || \
+             [[ "$NEW_SPN" != "$CURRENT_SPN" ]]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -80,10 +96,12 @@ jobs:
         env:
           NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
           NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+          SPN_VER: ${{ steps.versions.outputs.spn_version }}
         run: |
           # Update version table in README.md (using env vars for safety)
-          sed -i "s/novanet.*v[0-9.]*/novanet | v$NOVANET_VER/" README.md
-          sed -i "s/nika.*v[0-9.]*/nika | v$NIKA_VER/" README.md
+          sed -i "s/\*\*novanet\*\* | v[0-9.]*/\*\*novanet\*\* | v$NOVANET_VER/" README.md
+          sed -i "s/\*\*nika\*\* | v[0-9.]*/\*\*nika\*\* | v$NIKA_VER/" README.md
+          sed -i "s/\*\*spn\*\* | v[0-9.]*/\*\*spn\*\* | v$SPN_VER/" README.md
 
       - name: Update MCP tool count
         if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
@@ -92,11 +110,19 @@ jobs:
           MCP_COUNT=$(grep -c 'novanet_' _repos/novanet/tools/novanet-mcp/src/tools/mod.rs 2>/dev/null || echo "14")
           sed -i "s/[0-9]* MCP tools/$MCP_COUNT MCP tools/g" skills/01-core/novanet/SKILL.md
 
+      - name: Update SPN command count
+        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          # Count commands from SPN CLI
+          CMD_COUNT=$(find _repos/spn-cli/src -name "*.rs" -exec grep -l "pub fn" {} \; 2>/dev/null | wc -l || echo "50")
+          sed -i "s/[0-9]* commands/$CMD_COUNT+ commands/g" skills/01-core/spn/SKILL.md || true
+
       - name: Generate sync report
         if: steps.changes.outputs.has_changes == 'true'
         env:
           NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
           NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+          SPN_VER: ${{ steps.versions.outputs.spn_version }}
         run: |
           cat > .sync-report.md << EOF
           # Sync Report
@@ -106,10 +132,11 @@ jobs:
 
           ## Version Updates
 
-          | Tool | Current |
+          | Tool | Version |
           |------|---------|
           | NovaNet | v$NOVANET_VER |
           | Nika | v$NIKA_VER |
+          | SPN | v$SPN_VER |
 
           ## Changes
 
@@ -120,9 +147,6 @@ jobs:
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
         uses: peter-evans/create-pull-request@v6
-        env:
-          NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
-          NIKA_VER: ${{ steps.versions.outputs.nika_version }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore: sync from source repos'
@@ -133,12 +157,12 @@ jobs:
             This PR updates plugin documentation from source repositories.
 
             ### Version Updates
-            - **NovaNet**: See .sync-report.md
-            - **Nika**: See .sync-report.md
+            See `.sync-report.md` for details.
 
             ### Files Changed
             - README.md (version table)
             - skills/01-core/novanet/SKILL.md
+            - skills/01-core/spn/SKILL.md
             - .sync-report.md
 
             ---
@@ -153,6 +177,7 @@ jobs:
         env:
           NOVANET_VER: ${{ steps.versions.outputs.novanet_version }}
           NIKA_VER: ${{ steps.versions.outputs.nika_version }}
+          SPN_VER: ${{ steps.versions.outputs.spn_version }}
           HAS_CHANGES: ${{ steps.changes.outputs.has_changes }}
         run: |
           echo "## Sync Summary" >> $GITHUB_STEP_SUMMARY
@@ -161,6 +186,7 @@ jobs:
           echo "|------|---------|" >> $GITHUB_STEP_SUMMARY
           echo "| NovaNet | v$NOVANET_VER |" >> $GITHUB_STEP_SUMMARY
           echo "| Nika | v$NIKA_VER |" >> $GITHUB_STEP_SUMMARY
+          echo "| SPN | v$SPN_VER |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [[ "$HAS_CHANGES" == "true" ]]; then
             echo "**Status**: Changes detected, PR created" >> $GITHUB_STEP_SUMMARY
