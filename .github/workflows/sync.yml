@@ -60,8 +60,8 @@ jobs:
           NIKA_VERSION=$(grep -m1 '^version = ' _repos/nika/tools/nika/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "nika_version=$NIKA_VERSION" >> $GITHUB_OUTPUT
 
-          # SPN version from Cargo.toml
-          SPN_VERSION=$(grep -m1 '^version = ' _repos/spn-cli/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          # SPN version from Cargo.toml (nested in crates/spn/ - workspace structure)
+          SPN_VERSION=$(grep -m1 '^version = ' _repos/spn-cli/crates/spn/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "spn_version=$SPN_VERSION" >> $GITHUB_OUTPUT
 
           echo "NovaNet: $NOVANET_VERSION"
@@ -113,8 +113,8 @@ jobs:
       - name: Update SPN command count
         if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.dry_run != 'true'
         run: |
-          # Count commands from SPN CLI
-          CMD_COUNT=$(find _repos/spn-cli/src -name "*.rs" -exec grep -l "pub fn" {} \; 2>/dev/null | wc -l || echo "50")
+          # Count commands from SPN CLI (workspace structure: crates/spn/src)
+          CMD_COUNT=$(find _repos/spn-cli/crates/spn/src -name "*.rs" -exec grep -l "pub fn" {} \; 2>/dev/null | wc -l || echo "50")
           sed -i "s/[0-9]* commands/$CMD_COUNT+ commands/g" skills/01-core/spn/SKILL.md || true
 
       - name: Generate sync report
