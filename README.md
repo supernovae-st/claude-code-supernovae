@@ -140,9 +140,9 @@ This plugin uses **progressive disclosure** - content loads on-demand based on r
 
 | Tool | Version | Key Features |
 |------|---------|--------------|
-| **spn** | v0.12.2 | 7 providers, 48 MCP aliases, OS Keychain |
-| **nika** | v0.21.0 | 5 verbs, 7 providers, 3,808 tests |
-| **novanet** | v0.17.0 | 14 MCP tools, 61 nodes, 182 arcs |
+| **spn** | v0.17.0 | 7 providers, 48 MCP aliases, OS Keychain |
+| **nika** | v0.27.0 | 5 verbs, 7 providers, 3,808 tests |
+| **novanet** | v0.20.0 | 14 MCP tools, 61 nodes, 182 arcs |
 
 ## Contributing
 

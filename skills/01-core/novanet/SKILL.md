@@ -1,6 +1,6 @@
 ---
 name: novanet
-description: NovaNet knowledge graph reference - 14 MCP tools for context assembly, content generation, and SEO operations. Use when user asks about novanet_generate, novanet_write, MCP tools, schema, or knowledge graph queries.
+description: NovaNet knowledge graph reference - 6 MCP tools for context assembly, content generation, and SEO operations. Use when user asks about novanet_generate, novanet_write,6 MCP tools, schema, or knowledge graph queries.
 argument-hint: "[topic]"
 ---
 
